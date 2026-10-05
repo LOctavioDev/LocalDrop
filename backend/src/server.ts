@@ -1,11 +1,13 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
 import filesRouter from './routes/files';
 import { ensureStorageDir } from './utils/fileUtils';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const HOST = '0.0.0.0'; // Listen on all network interfaces for LAN access
+const FRONTEND_DIST = path.join(__dirname, '../../frontend/dist');
 
 // Middleware
 app.use(cors()); // Allow requests from any origin (LAN devices)
@@ -18,6 +20,13 @@ app.get('/health', (_req, res) => {
 
 // API routes
 app.use('/api/files', filesRouter);
+
+// Serve the built frontend (production) so the backend is a single
+// entry point: run it and LocalDrop is already reachable.
+app.use(express.static(FRONTEND_DIST));
+app.get(/^(?!\/api|\/health).*/, (_req, res) => {
+  res.sendFile(path.join(FRONTEND_DIST, 'index.html'));
+});
 
 // Error handling middleware
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
