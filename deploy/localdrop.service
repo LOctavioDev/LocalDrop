@@ -1,0 +1,14 @@
+[Unit]
+Description=LocalDrop - LAN file sharing server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/dev/Proyects/LocalDrop/backend
+ExecStart=%h/.nvm/versions/node/v20.20.2/bin/node dist/server.js
+Restart=on-failure
+RestartSec=3
+Environment=PORT=3001
+
+[Install]
+WantedBy=default.target

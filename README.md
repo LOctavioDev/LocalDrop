@@ -14,6 +14,7 @@ Una aplicación web para transferir archivos entre dispositivos en la misma red 
 - ✅ Acceso desde cualquier dispositivo en la red local
 - ✅ Seguridad básica (prevención de path traversal, sanitización de nombres)
 - ✅ Servidor único en producción: el backend sirve el frontend ya compilado (un solo puerto, sin pasos manuales)
+- ✅ Arranque automático y auto-reinicio vía servicio systemd (ver [`deploy/`](deploy/))
 
 ## Requisitos
 
@@ -277,9 +278,48 @@ El backend ya sirve el build de producción del frontend (ver `backend/src/serve
 
    Con esto basta: en cuanto el proceso levanta, LocalDrop ya está disponible en `http://<IP_DEL_SERVIDOR>:3001` para cualquier dispositivo de la LAN — no hace falta ningún paso manual adicional.
 
-### Mantenerlo corriendo de forma persistente (opcional, recomendado para un servidor permanente)
+### Mantenerlo corriendo de forma persistente: servicio systemd (recomendado)
 
-Si quieres que el proceso sobreviva a cierres de terminal y se reinicie solo ante un crash o un reinicio del servidor, usa PM2 en vez de `npm start`:
+Así es como está desplegado actualmente en este equipo: LocalDrop corre como un **servicio de systemd de usuario**, por lo que arranca solo, se reinicia automáticamente si crashea, y no necesitas dejar ninguna terminal abierta.
+
+El archivo de la unidad vive en el repo como plantilla en [`deploy/localdrop.service`](deploy/localdrop.service) (usa `%h` para el home del usuario, así es portable entre máquinas) y se instala en `~/.config/systemd/user/localdrop.service`.
+
+**Instalación (una sola vez):**
+
+```bash
+# 1. Construye el proyecto
+npm run install:all
+npm run build
+
+# 2. Copia la unidad a systemd (ajusta la ruta del binario de node si tu versión difiere)
+mkdir -p ~/.config/systemd/user
+cp deploy/localdrop.service ~/.config/systemd/user/localdrop.service
+
+# 3. Habilítala y arráncala
+systemctl --user daemon-reload
+systemctl --user enable --now localdrop.service
+```
+
+**Para que arranque incluso antes de iniciar sesión (boot real, no solo login):**
+
+```bash
+sudo loginctl enable-linger $USER
+```
+
+Esto es lo único que requiere `sudo` en todo el flujo, porque modifica una configuración a nivel del sistema (permite que los servicios de usuario corran sin una sesión activa). Es un paso único.
+
+**Comandos útiles del día a día (no requieren sudo):**
+
+```bash
+systemctl --user status localdrop     # ver estado
+journalctl --user -u localdrop -f     # ver logs en vivo
+systemctl --user restart localdrop    # reiniciar
+systemctl --user stop localdrop       # detener
+```
+
+### Alternativa: PM2
+
+Si prefieres PM2 en vez de systemd:
 
 ```bash
 npm install -g pm2       # no requiere sudo si usas nvm
@@ -296,6 +336,22 @@ ip addr show | grep "inet " | grep -v 127.0.0.1
 ```
 
 Luego accede desde cualquier dispositivo de la red con `http://<IP_DEL_SERVIDOR>:3001`.
+
+### Volver a desplegar después de modificar código
+
+Cada vez que cambies algo (código propio o un `git pull` con cambios nuevos), tienes que **reconstruir y reiniciar el servicio** para que el cambio se vea reflejado — el servicio corre el JS ya compilado en `dist/`, no lee `src/` en vivo.
+
+Hay un script que hace los tres pasos (instalar dependencias, construir, reiniciar el servicio) en un solo comando:
+
+```bash
+cd ~/dev/Proyects/LocalDrop
+git pull                 # si el cambio viene del repo remoto
+./deploy/redeploy.sh
+```
+
+`deploy/redeploy.sh` ejecuta: `npm run install:all` → `npm run build` → `systemctl --user restart localdrop`. Si editaste el código localmente (sin hacer `git pull`), simplemente omite ese paso y corre `./deploy/redeploy.sh` directamente.
+
+Si solo usas `npm start` manualmente (sin el servicio systemd), basta con parar el proceso (Ctrl+C), correr `npm run build` y `npm start` de nuevo.
 
 ### Notas de Seguridad para Producción
 
@@ -340,6 +396,10 @@ LocalDrop/
 │   ├── vite.config.ts        # Configuración de Vite (proxy, host 0.0.0.0)
 │   └── tsconfig.json
 │
+├── deploy/
+│   ├── localdrop.service      # Plantilla de unidad systemd (usuario)
+│   └── redeploy.sh            # Reconstruye y reinicia el servicio
+│
 ├── package.json              # Scripts raíz
 └── README.md
 ```
@@ -356,6 +416,7 @@ LocalDrop/
 
 ### Error: "Cannot GET /api/files"
 - El backend no está corriendo. Ejecuta `npm start` (producción) o `npm run dev` (desarrollo) desde la raíz del proyecto
+- Si lo corres como servicio systemd, revisa `systemctl --user status localdrop` y `journalctl --user -u localdrop -f`
 
 ### La página carga pero muestra un error o queda en blanco (modo producción)
 - Falta el build del frontend. Ejecuta `npm run build` desde la raíz antes de `npm start`
