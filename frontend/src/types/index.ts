@@ -10,3 +10,7 @@ export interface UploadProgress {
   status: 'uploading' | 'success' | 'error';
   error?: string;
 }
+
+export type SortBy = 'name' | 'date' | 'size' | 'type' | 'custom';
+export type SortDir = 'asc' | 'desc';
+export type ViewMode = 'list' | 'grid';

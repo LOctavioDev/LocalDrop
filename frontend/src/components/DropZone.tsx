@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from 'react';
+import { FolderOpen, UploadCloud } from 'lucide-react';
 
 interface DropZoneProps {
   onFilesSelected: (files: File[]) => void;
@@ -60,11 +61,11 @@ export const DropZone: React.FC<DropZoneProps> = ({ onFilesSelected, disabled })
   return (
     <div
       style={{
-        border: isDragging ? '3px dashed #007bff' : '2px dashed #ccc',
-        borderRadius: '8px',
+        border: isDragging ? '3px dashed var(--accent)' : '2px dashed var(--border)',
+        borderRadius: '12px',
         padding: '40px',
         textAlign: 'center',
-        backgroundColor: isDragging ? '#f0f8ff' : disabled ? '#f5f5f5' : '#fff',
+        backgroundColor: isDragging ? 'var(--surface-hover)' : disabled ? 'var(--surface-hover)' : 'var(--surface)',
         cursor: disabled ? 'not-allowed' : 'pointer',
         transition: 'all 0.3s ease',
         marginBottom: '20px',
@@ -74,25 +75,34 @@ export const DropZone: React.FC<DropZoneProps> = ({ onFilesSelected, disabled })
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div style={{ fontSize: '48px', marginBottom: '16px' }}>
-        {isDragging ? '📥' : '📁'}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          marginBottom: '16px',
+          color: isDragging ? 'var(--accent)' : 'var(--text-secondary)',
+          transition: 'color 0.3s ease',
+        }}
+      >
+        {isDragging ? <UploadCloud size={48} /> : <FolderOpen size={48} />}
       </div>
-      <h2 style={{ margin: '0 0 16px 0', color: '#333' }}>
+      <h2 style={{ margin: '0 0 16px 0', color: 'var(--text-primary)', fontWeight: 600 }}>
         {isDragging ? 'Drop files here' : 'Drag & Drop Files'}
       </h2>
-      <p style={{ margin: '0 0 16px 0', color: '#666' }}>
+      <p style={{ margin: '0 0 16px 0', color: 'var(--text-secondary)' }}>
         or
       </p>
       <label
         style={{
           display: 'inline-block',
           padding: '12px 24px',
-          backgroundColor: disabled ? '#ccc' : '#007bff',
-          color: 'white',
-          borderRadius: '4px',
+          backgroundColor: disabled ? 'var(--disabled)' : 'var(--accent)',
+          color: 'var(--accent-contrast)',
+          borderRadius: '980px',
           cursor: disabled ? 'not-allowed' : 'pointer',
           fontSize: '16px',
-          fontWeight: 'bold',
+          fontWeight: 600,
+          transition: 'background-color 0.2s ease',
         }}
       >
         Select Files
