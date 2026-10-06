@@ -1,9 +1,10 @@
 import path from 'path';
 import fs from 'fs/promises';
 import { existsSync } from 'fs';
+import { createHash } from 'crypto';
 import { execFile } from 'child_process';
 import sharp from 'sharp';
-import { STORAGE_DIR } from './fileUtils';
+import { STORAGE_DIR, walk } from './fileUtils';
 
 export const THUMBS_DIR = path.join(STORAGE_DIR, '.thumbnails');
 
@@ -62,26 +63,29 @@ async function generatePdfThumbnail(sourcePath: string, destPath: string): Promi
 
 let pdftoppmAvailable = true;
 
-function thumbnailPathFor(filename: string): string {
-  return path.join(THUMBS_DIR, `${filename}.jpg`);
+// Keyed by a hash of the item's relative path, so same-named files in
+// different folders never share a cache entry
+function thumbnailPathFor(rel: string): string {
+  const key = createHash('sha1').update(rel).digest('hex');
+  return path.join(THUMBS_DIR, `${key}.jpg`);
 }
 
 /**
- * Returns the path to a cached thumbnail for `filename`, generating and
- * caching it first if needed. Returns null if the file type isn't
+ * Returns the path to a cached thumbnail for the file at relative path
+ * `rel`, generating and caching it first if needed. Returns null if the file type isn't
  * supported, or if generation fails (e.g. corrupt file, missing
  * poppler-utils for PDFs) — callers should treat that as "no thumbnail".
  */
 export async function getOrCreateThumbnail(
-  filename: string,
+  rel: string,
   sourcePath: string
 ): Promise<string | null> {
-  const kind = getFileKind(filename);
+  const kind = getFileKind(rel);
   if (kind === 'other') return null;
 
   if (kind === 'pdf' && !pdftoppmAvailable) return null;
 
-  const thumbPath = thumbnailPathFor(filename);
+  const thumbPath = thumbnailPathFor(rel);
 
   const [sourceStat, thumbStat] = await Promise.all([
     fs.stat(sourcePath),
@@ -108,16 +112,47 @@ export async function getOrCreateThumbnail(
         'pdftoppm not found — PDF thumbnails disabled. Install the "poppler-utils" system package to enable them.'
       );
     } else {
-      console.error(`Failed to generate thumbnail for ${filename}:`, error);
+      console.error(`Failed to generate thumbnail for ${rel}:`, error);
     }
     await fs.unlink(thumbPath).catch(() => {});
     return null;
   }
 }
 
-export async function deleteThumbnail(filename: string): Promise<void> {
-  const thumbPath = thumbnailPathFor(filename);
+export async function deleteThumbnail(rel: string): Promise<void> {
+  const thumbPath = thumbnailPathFor(rel);
   if (existsSync(thumbPath)) {
     await fs.unlink(thumbPath).catch(() => {});
   }
+}
+
+/**
+ * Collects the relative paths of every file at or under `rel`, so their
+ * thumbnails can be dropped or carried over. Call it before the item is
+ * deleted or moved away.
+ */
+export async function filesUnder(rel: string, isFolder: boolean): Promise<string[]> {
+  if (!isFolder) return [rel];
+  const files: string[] = [];
+  for await (const entry of walk(rel)) {
+    if (!entry.isFolder) files.push(entry.rel);
+  }
+  return files;
+}
+
+export async function deleteThumbnails(files: string[]): Promise<void> {
+  await Promise.all(files.map(deleteThumbnail));
+}
+
+/**
+ * Re-keys cached thumbnails after files moved from `fromRel` to `toRel`
+ * (`files` being their old paths), so they don't have to be regenerated.
+ */
+export async function moveThumbnails(files: string[], fromRel: string, toRel: string): Promise<void> {
+  await Promise.all(
+    files.map(async (oldRel) => {
+      const newRel = toRel + oldRel.slice(fromRel.length);
+      await fs.rename(thumbnailPathFor(oldRel), thumbnailPathFor(newRel)).catch(() => {});
+    })
+  );
 }

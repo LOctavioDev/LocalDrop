@@ -29,14 +29,18 @@ Una aplicación web para transferir archivos entre dispositivos en la misma red 
 
 ## Características
 
-- Drag & drop para subir archivos
-- Selección de archivos mediante botón
+- Drag & drop para subir archivos **y carpetas enteras** (se conserva su estructura)
+- Selección de archivos o de una carpeta completa mediante botón
+- **Carpetas**: crear, renombrar, mover, eliminar y anidar sin límite, como en el explorador del sistema (ver [Carpetas](#carpetas))
+- Clic derecho (o botón "⋯") con menú contextual: abrir, descargar, renombrar, mover a…, eliminar
+- Descarga de cualquier carpeta como `.zip`
+- Búsqueda en todas las carpetas (sin distinguir mayúsculas ni acentos)
 - Lista de archivos disponibles con nombre, tamaño y fecha
 - Preview con miniatura para imágenes (y PDFs, si está instalado `poppler-utils`)
 - Vistas de lista y grilla, ordenamiento por nombre/fecha/tamaño/tipo, y orden manual arrastrable compartido entre dispositivos
 - Tema claro/oscuro con transición animada, tipografía de sistema de Apple e íconos de [Lucide](https://lucide.dev/)
-- Descarga de archivos
-- Eliminación de archivos
+- Descarga y eliminación de archivos
+- Nombres repetidos: se pregunta si reemplazar o conservar ambos (`archivo (2).txt`)
 - Barra de progreso de subida
 - Manejo de archivos grandes con streams (sin cargar en memoria)
 - Acceso desde cualquier dispositivo en la red local
@@ -241,7 +245,9 @@ Este directorio se crea automáticamente cuando ejecutas el backend por primera 
 **IMPORTANTE:**
 - Los archivos se guardan físicamente en el disco (no en memoria)
 - El filesystem es la fuente de verdad (no hay base de datos)
-- Los archivos duplicados reciben un timestamp: `archivo-1234567890.txt`
+- Las carpetas de la app son carpetas reales dentro de `backend/storage/`: lo que ves en ETHDrop es exactamente lo que hay en el disco
+- Si subes un archivo con un nombre que ya existe, la app pregunta si reemplazarlo o conservar ambos; "conservar ambos" lo guarda como `archivo (2).txt`, `archivo (3).txt`…
+- Los nombres que empiezan con punto están reservados para datos internos (`.thumbnails/`, `.order.json`), así que al subir un archivo como `.env` se guarda como `env`
 
 ## Ejecutar Pruebas
 
@@ -251,13 +257,12 @@ npm test
 ```
 
 Las pruebas incluyen:
-- Listar archivos
-- Subir archivos
-- Descargar archivos
-- Eliminar archivos
-- Prevención de path traversal
-- Manejo de nombres duplicados
-- Sanitización de nombres de archivos
+- Listar, subir, descargar y eliminar archivos
+- Crear, renombrar, mover y eliminar carpetas (con su contenido, orden guardado y miniaturas)
+- Conflictos de nombre: pedir decisión (409), conservar ambos y reemplazar
+- Descarga de carpetas como `.zip` y búsqueda
+- Prevención de path traversal en todos los endpoints (`..`, barras invertidas, rutas ocultas, rutas absolutas)
+- Sanitización de nombres de archivos (separadores, caracteres de control, puntos iniciales, UTF-8)
 
 ## Tecnologías Utilizadas
 
@@ -268,6 +273,7 @@ Las pruebas incluyen:
 - Multer (manejo de archivos con streams)
 - CORS
 - sharp (generación de miniaturas de imágenes)
+- archiver (descarga de carpetas como `.zip`, generado al vuelo)
 - poppler-utils / `pdftoppm` (generación de miniaturas de PDF — paquete del sistema, opcional)
 
 ### Frontend
@@ -401,13 +407,18 @@ LocalDrop/
 │   ├── src/
 │   │   ├── server.ts          # Servidor principal (escucha en 0.0.0.0:3001, sirve el frontend compilado)
 │   │   ├── routes/
-│   │   │   └── files.ts       # API REST para archivos
+│   │   │   ├── index.ts       # Monta todas las rutas bajo /api
+│   │   │   ├── files.ts       # Listar, subir, descargar, miniaturas y orden
+│   │   │   ├── folders.ts     # Crear carpetas y descargarlas como .zip
+│   │   │   ├── items.ts       # Renombrar, mover y eliminar (archivos y carpetas)
+│   │   │   └── search.ts      # Búsqueda en todas las carpetas
 │   │   ├── middleware/
 │   │   │   └── upload.ts      # Configuración de multer
 │   │   └── utils/
-│   │       ├── fileUtils.ts   # Sanitización y validación
+│   │       ├── fileUtils.ts   # Rutas seguras, nombres válidos, listados
+│   │       ├── items.ts       # Mover/renombrar/eliminar con resolución de conflictos
 │   │       ├── thumbnails.ts  # Generación y cacheo de miniaturas (sharp + pdftoppm)
-│   │       └── order.ts       # Persistencia del orden manual compartido
+│   │       └── order.ts       # Persistencia del orden manual compartido (por carpeta)
 │   ├── storage/               # Archivos subidos (creado automáticamente)
 │   │   ├── .thumbnails/       # Cache de miniaturas (oculto, no sale en la lista)
 │   │   └── .order.json        # Orden manual guardado (oculto, no sale en la lista)
@@ -427,9 +438,20 @@ LocalDrop/
 │   │   │   └── ThemeContext.tsx # Proveedor de tema claro/oscuro
 │   │   ├── components/
 │   │   │   ├── DropZone.tsx
-│   │   │   ├── FileList.tsx
+│   │   │   ├── FileBrowser.tsx   # Explorador: ruta, búsqueda, lista/grilla, arrastrar y soltar
+│   │   │   ├── ItemViews.tsx     # Miniaturas y renombrado en el lugar
+│   │   │   ├── ContextMenu.tsx   # Menú de clic derecho
+│   │   │   ├── MoveDialog.tsx    # Selector de carpeta para "Mover a…"
+│   │   │   ├── Dialog.tsx        # Diálogos (confirmar, conflictos de nombre)
 │   │   │   ├── UploadProgress.tsx
 │   │   │   └── ThemeToggle.tsx
+│   │   ├── hooks/
+│   │   │   ├── useHashPath.ts    # Carpeta abierta en la URL (#/Fotos/2026)
+│   │   │   └── useMediaQuery.ts
+│   │   ├── utils/
+│   │   │   ├── droppedFiles.ts   # Lee carpetas arrastradas o elegidas
+│   │   │   ├── paths.ts
+│   │   │   └── sorting.ts        # Ordenamiento (carpetas primero) y preferencias
 │   │   ├── services/
 │   │   │   └── api.ts        # Cliente API
 │   │   └── types/
@@ -448,14 +470,25 @@ LocalDrop/
 
 ## API Endpoints
 
-- `GET /api/files` - Lista todos los archivos
-- `POST /api/files` - Sube un archivo (multipart/form-data)
-- `GET /api/files/:filename/download` - Descarga un archivo
-- `GET /api/files/:filename/thumbnail` - Sirve una miniatura (imágenes y PDFs); 404 si el tipo no soporta preview
-- `GET /api/files/order` - Devuelve el orden manual guardado (array de nombres de archivo)
-- `PUT /api/files/order` - Guarda un nuevo orden manual (body: `{ "order": ["archivo1.jpg", "archivo2.pdf"] }`)
-- `DELETE /api/files/:filename` - Elimina un archivo
-- `GET /health` - Health check del backend
+Las rutas de archivos y carpetas son relativas a `backend/storage/`, separadas con `/` (por ejemplo `Fotos/2026/viaje.jpg`); `""` es la carpeta principal. Cualquier ruta que intente salir de `storage/` o apunte a algo oculto responde `400`.
+
+| Método y ruta | Qué hace |
+|---|---|
+| `GET /api/files?dir=Fotos` | Lista archivos y carpetas de una carpeta (la principal por defecto). Cada elemento trae `type` (`file`/`folder`), `name`, `path`, `uploadedAt` y `size` (archivos) o `itemCount` (carpetas) |
+| `POST /api/files?dir=Fotos&conflict=rename\|replace` | Sube un archivo (multipart, campo `file`). Crea la carpeta si no existe. Si el nombre está ocupado: `rename` (por defecto) lo guarda como `nombre (2)`, `replace` sobrescribe |
+| `GET /api/files/download?path=…` | Descarga un archivo |
+| `GET /api/files/thumbnail?path=…` | Miniatura (imágenes y PDFs); 404 si el tipo no soporta preview |
+| `GET /api/files/order?dir=…` | Orden manual guardado de una carpeta (array de nombres) |
+| `PUT /api/files/order` | Guarda el orden manual de una carpeta: `{ "dir": "Fotos", "order": ["b.jpg", "a.jpg"] }` |
+| `POST /api/folders` | Crea una carpeta: `{ "parent": "Fotos", "name": "2026" }` (si existe, la crea como `2026 (2)`) |
+| `GET /api/folders/download?path=…` | Descarga una carpeta como `.zip` (la principal si `path` está vacío) |
+| `PATCH /api/items` | Renombra un archivo o carpeta: `{ "path", "newName", "conflict"? }` |
+| `POST /api/items/move` | Mueve a otra carpeta: `{ "path", "toDir", "conflict"? }` |
+| `DELETE /api/items?path=…` | Elimina un archivo, o una carpeta con todo su contenido |
+| `GET /api/search?q=…` | Busca por nombre en todas las carpetas (máx. 200 resultados) |
+| `GET /health` | Health check del backend |
+
+Al renombrar o mover, si el nombre ya existe y no se manda `conflict`, la respuesta es `409` con `{ "name", "suggestedName" }` para que la app pregunte qué hacer; con `conflict: "rename"` se conservan ambos y con `"replace"` se sobrescribe.
 
 ## Preview de imágenes y PDFs
 
@@ -470,13 +503,31 @@ La lista de archivos muestra una miniatura para imágenes (`jpg`, `png`, `gif`, 
 
   Después de instalarlo no hace falta reiniciar nada más que el servicio (`systemctl --user restart localdrop` o el proceso de `npm start`, según cómo lo tengas corriendo) — la próxima vez que se pida una miniatura de un PDF, se genera sola.
 
+## Carpetas
+
+La carpeta principal sigue siendo la de siempre, y adentro puedes crear todas las carpetas (y subcarpetas) que quieras:
+
+- **Crear**: botón **Nueva carpeta** o clic derecho en un espacio vacío → *Nueva carpeta*. Aparece con el nombre listo para escribir, como en Finder/Explorer (Enter guarda, Esc deja el nombre por defecto).
+- **Abrir**: un clic en la carpeta. Arriba se muestra la ruta (`Inicio › Fotos › 2026`) y cada parte es clickeable. La carpeta abierta queda en la URL (`#/Fotos/2026`), así que el botón "atrás" del navegador funciona y puedes compartir el enlace a una carpeta con otro dispositivo.
+- **Menú contextual**: clic derecho sobre un archivo o carpeta (o el botón **⋯**, pensado para celulares) → Abrir, Descargar / Descargar .zip, Renombrar, Mover a…, Eliminar.
+- **Renombrar**: en el lugar, igual que en el sistema operativo. Funciona para archivos y carpetas.
+- **Mover**: arrastra un elemento y suéltalo sobre una carpeta para meterlo adentro, o sobre una parte de la ruta de arriba para subirlo de nivel. También con *Mover a…*, que abre un selector de carpetas (y permite crear una nueva ahí mismo).
+- **Nombres repetidos**: al subir, renombrar o mover, si ya existe un elemento con ese nombre la app pregunta: **Reemplazar** o **Conservar ambos** (el nuevo queda como `nombre (2)`). Si son varios, se puede aplicar la misma decisión a todos.
+- **Eliminar una carpeta**: pide confirmación indicando cuántos elementos tiene adentro, y borra todo su contenido.
+- **Subir carpetas**: arrastra una carpeta desde tu computadora (o usa **Select Folder**) y se sube con toda su estructura. Puedes soltar archivos directamente sobre una carpeta de la lista para subirlos ahí.
+- **Descargar como .zip**: cualquier carpeta (o la principal entera, con el botón **.zip** de la barra) se descarga como zip, generado al vuelo sin archivos temporales.
+- **Buscar**: el buscador de la barra busca por nombre en todas las carpetas, sin distinguir mayúsculas ni acentos ("cancion" encuentra "Canción.mp3"). Cada resultado muestra en qué carpeta está, con un enlace para ir a ella.
+
+Si alguien borra o renombra desde otro dispositivo la carpeta que tienes abierta, la app vuelve a la carpeta principal con un aviso.
+
 ## Ordenamiento y vistas (lista / grilla)
 
-La lista de archivos tiene una barra con:
+Las **carpetas siempre aparecen primero**, con cualquier criterio de orden. La lista de archivos tiene una barra con:
 
 - **Ordenar por**: Nombre, Fecha, Tamaño, Tipo (agrupa imágenes/PDFs/otros) o Personalizado — cada uno con dirección ascendente/descendente (excepto Personalizado). También podés hacer click en los encabezados de columna de la vista de lista para ordenar.
 - **Vista**: lista (detalle, como hoy) o grilla (íconos grandes, tipo Finder/Explorer/Google Drive).
-- **Orden personalizado**: al elegir "Personalizado" podés arrastrar los archivos para acomodarlos como quieras, en lista o en grilla. Este orden se guarda en el servidor (`backend/storage/.order.json`, oculto, no aparece en la lista de archivos) y es **compartido** — cualquier dispositivo que entre a ETHDrop ve el mismo orden.
+- **Orden personalizado**: al elegir "Personalizado" podés arrastrar los archivos para acomodarlos como quieras, en lista o en grilla. Cada carpeta tiene su propio orden. Para reordenar carpetas entre sí, soltá la carpeta sobre el borde de otra (soltarla en el centro la mete adentro). Este orden se guarda en el servidor (`backend/storage/.order.json`, oculto, no aparece en la lista de archivos) y es **compartido** — cualquier dispositivo que entre a ETHDrop ve el mismo orden. Al renombrar o mover algo, el orden guardado se actualiza solo.
+- Ordenar por **Tamaño** ordena las carpetas por cantidad de elementos.
 
 La vista (lista/grilla) y el criterio de ordenamiento automático son preferencias **por dispositivo** (se guardan en `localStorage` del navegador), ya que tiene sentido que un celular prefiera grilla y una PC prefiera lista.
 

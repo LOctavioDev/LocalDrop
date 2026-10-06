@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
-import filesRouter from './routes/files';
+import apiRouter from './routes';
 import { ensureStorageDir } from './utils/fileUtils';
 
 const app = express();
@@ -19,7 +19,7 @@ app.get('/health', (_req, res) => {
 });
 
 // API routes
-app.use('/api/files', filesRouter);
+app.use('/api', apiRouter);
 
 // Serve the built frontend (production) so the backend is a single
 // entry point: run it and LocalDrop is already reachable.
