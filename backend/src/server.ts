@@ -43,13 +43,13 @@ async function startServer() {
     // Start listening
     app.listen(PORT, HOST, () => {
       console.log('\n==============================================');
-      console.log('🚀 LocalDrop Backend Server Started!');
+      console.log('ETHDrop Backend Server Started');
       console.log('==============================================');
-      console.log(`📡 Listening on: http://${HOST}:${PORT}`);
-      console.log(`🏠 Local access: http://localhost:${PORT}`);
-      console.log(`🌐 Network access: http://<YOUR_LOCAL_IP>:${PORT}`);
+      console.log(`Listening on: http://${HOST}:${PORT}`);
+      console.log(`Local access: http://localhost:${PORT}`);
+      console.log(`Network access: http://<YOUR_LOCAL_IP>:${PORT}`);
       console.log('==============================================\n');
-      console.log('💡 To find your local IP address:');
+      console.log('To find your local IP address:');
       console.log('   macOS: ifconfig | grep "inet " | grep -v 127.0.0.1');
       console.log('   Linux: ip addr show | grep "inet " | grep -v 127.0.0.1');
       console.log('   Windows: ipconfig | findstr IPv4');

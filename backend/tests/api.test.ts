@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs/promises';
 import { existsSync } from 'fs';
 import cors from 'cors';
+import sharp from 'sharp';
 import filesRouter from '../src/routes/files';
 import { ensureStorageDir, STORAGE_DIR } from '../src/utils/fileUtils';
 
@@ -15,16 +16,23 @@ app.use('/api/files', filesRouter);
 
 describe('LocalDrop API Tests', () => {
   beforeAll(async () => {
-    // Ensure storage directory exists
+    // Ensure storage directory exists (STORAGE_DIR is an isolated temp dir
+    // for tests, set up in tests/setup-env.ts — never the real one)
     await ensureStorageDir();
   });
 
+  afterAll(async () => {
+    await fs.rm(STORAGE_DIR, { recursive: true, force: true });
+  });
+
   afterEach(async () => {
-    // Clean up test files after each test
+    // Clean up test files (and the .thumbnails cache dir) after each test
     try {
-      const files = await fs.readdir(STORAGE_DIR);
+      const entries = await fs.readdir(STORAGE_DIR);
       await Promise.all(
-        files.map((file) => fs.unlink(path.join(STORAGE_DIR, file)))
+        entries.map((entry) =>
+          fs.rm(path.join(STORAGE_DIR, entry), { recursive: true, force: true })
+        )
       );
     } catch (error) {
       // Ignore errors if directory is empty
@@ -145,6 +153,94 @@ describe('LocalDrop API Tests', () => {
 
     it('should prevent path traversal in delete operations', async () => {
       const response = await request(app).delete('/api/files/../../../etc/passwd');
+
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe('GET and PUT /api/files/order', () => {
+    it('should return an empty array when no order has been saved', async () => {
+      const response = await request(app).get('/api/files/order');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual([]);
+    });
+
+    it('should save and return a custom order', async () => {
+      await fs.writeFile(path.join(STORAGE_DIR, 'a.txt'), 'A');
+      await fs.writeFile(path.join(STORAGE_DIR, 'b.txt'), 'B');
+
+      const putResponse = await request(app)
+        .put('/api/files/order')
+        .send({ order: ['b.txt', 'a.txt'] });
+
+      expect(putResponse.status).toBe(200);
+      expect(putResponse.body).toEqual(['b.txt', 'a.txt']);
+
+      const getResponse = await request(app).get('/api/files/order');
+      expect(getResponse.body).toEqual(['b.txt', 'a.txt']);
+    });
+
+    it('should drop filenames that do not exist on disk', async () => {
+      await fs.writeFile(path.join(STORAGE_DIR, 'real.txt'), 'real');
+
+      const response = await request(app)
+        .put('/api/files/order')
+        .send({ order: ['real.txt', 'ghost.txt'] });
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(['real.txt']);
+    });
+
+    it('should reject a non-array order', async () => {
+      const response = await request(app)
+        .put('/api/files/order')
+        .send({ order: 'not-an-array' });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('should remove a deleted file from the saved order', async () => {
+      await fs.writeFile(path.join(STORAGE_DIR, 'keep.txt'), 'keep');
+      await fs.writeFile(path.join(STORAGE_DIR, 'gone.txt'), 'gone');
+
+      await request(app)
+        .put('/api/files/order')
+        .send({ order: ['gone.txt', 'keep.txt'] });
+
+      await request(app).delete('/api/files/gone.txt');
+
+      const response = await request(app).get('/api/files/order');
+      expect(response.body).toEqual(['keep.txt']);
+    });
+  });
+
+  describe('GET /api/files/:filename/thumbnail', () => {
+    it('should generate and serve a thumbnail for an image file', async () => {
+      const imageBuffer = await sharp({
+        create: { width: 20, height: 20, channels: 3, background: { r: 255, g: 0, b: 0 } },
+      })
+        .jpeg()
+        .toBuffer();
+
+      await fs.writeFile(path.join(STORAGE_DIR, 'thumb-test.jpg'), imageBuffer);
+
+      const response = await request(app).get('/api/files/thumb-test.jpg/thumbnail');
+
+      expect(response.status).toBe(200);
+      expect(response.headers['content-type']).toMatch(/image\/jpeg/);
+    });
+
+    it('should return 404 for file types without thumbnail support', async () => {
+      await fs.writeFile(path.join(STORAGE_DIR, 'thumb-test.txt'), 'not an image');
+
+      const response = await request(app).get('/api/files/thumb-test.txt/thumbnail');
+
+      expect(response.status).toBe(404);
+    });
+
+    it('should return 404 for a non-existent file', async () => {
+      const response = await request(app).get('/api/files/nonexistent.jpg/thumbnail');
 
       expect(response.status).toBe(404);
     });
