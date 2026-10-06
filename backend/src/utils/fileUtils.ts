@@ -2,7 +2,11 @@ import path from 'path';
 import fs from 'fs/promises';
 import { existsSync } from 'fs';
 
-export const STORAGE_DIR = path.join(__dirname, '../../storage');
+// Overridable via STORAGE_DIR so tests can point this at an isolated
+// temp directory instead of the real production storage folder.
+export const STORAGE_DIR = process.env.STORAGE_DIR
+  ? path.resolve(process.env.STORAGE_DIR)
+  : path.join(__dirname, '../../storage');
 
 /**
  * Sanitizes a filename to prevent path traversal attacks
