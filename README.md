@@ -9,7 +9,7 @@
 Una aplicación web para transferir archivos entre dispositivos en la misma red local (LAN/Wi-Fi), similar a AirDrop o Google Drive local.
 
 <p align="center">
-  <img src="docs/media/demo.gif" alt="Demo de ETHDrop: subir, ordenar y descargar archivos" width="720">
+  <img src="docs/media/demo.gif" alt="Demo de ETHDrop: subir, ordenar y descargar archivos" width="100%">
 </p>
 
 <p align="center">
