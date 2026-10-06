@@ -1,20 +1,29 @@
-# LocalDrop
+# ETHDrop
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![Node.js](https://img.shields.io/badge/Node.js-18%2B-339933?logo=node.js&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
+![Express](https://img.shields.io/badge/Express-4-000000?logo=express&logoColor=white)
 
 Una aplicación web para transferir archivos entre dispositivos en la misma red local (LAN/Wi-Fi), similar a AirDrop o Google Drive local.
 
 ## Características
 
-- ✅ Drag & drop para subir archivos
-- ✅ Selección de archivos mediante botón
-- ✅ Lista de archivos disponibles con nombre, tamaño y fecha
-- ✅ Descarga de archivos
-- ✅ Eliminación de archivos
-- ✅ Barra de progreso de subida
-- ✅ Manejo de archivos grandes con streams (sin cargar en memoria)
-- ✅ Acceso desde cualquier dispositivo en la red local
-- ✅ Seguridad básica (prevención de path traversal, sanitización de nombres)
-- ✅ Servidor único en producción: el backend sirve el frontend ya compilado (un solo puerto, sin pasos manuales)
-- ✅ Arranque automático y auto-reinicio vía servicio systemd (ver [`deploy/`](deploy/))
+- Drag & drop para subir archivos
+- Selección de archivos mediante botón
+- Lista de archivos disponibles con nombre, tamaño y fecha
+- Preview con miniatura para imágenes (y PDFs, si está instalado `poppler-utils`)
+- Vistas de lista y grilla, ordenamiento por nombre/fecha/tamaño/tipo, y orden manual arrastrable compartido entre dispositivos
+- Tema claro/oscuro con transición animada, tipografía de sistema de Apple e íconos de [Lucide](https://lucide.dev/)
+- Descarga de archivos
+- Eliminación de archivos
+- Barra de progreso de subida
+- Manejo de archivos grandes con streams (sin cargar en memoria)
+- Acceso desde cualquier dispositivo en la red local
+- Seguridad básica (prevención de path traversal, sanitización de nombres)
+- Servidor único en producción: el backend sirve el frontend ya compilado (un solo puerto, sin pasos manuales)
+- Arranque automático y auto-reinicio vía servicio systemd (ver [`deploy/`](deploy/))
 
 ## Requisitos
 
@@ -41,7 +50,7 @@ cd ../frontend && npm install
 
 ### Modo Producción / Servidor único (Recomendado)
 
-El backend sirve el build del frontend, así que **con un solo proceso corriendo ya tienes LocalDrop accesible** — no hace falta levantar dos servidores.
+El backend sirve el build del frontend, así que **con un solo proceso corriendo ya tienes ETHDrop accesible** — no hace falta levantar dos servidores.
 
 Desde la raíz del proyecto:
 
@@ -239,12 +248,15 @@ Las pruebas incluyen:
 - Express
 - Multer (manejo de archivos con streams)
 - CORS
+- sharp (generación de miniaturas de imágenes)
+- poppler-utils / `pdftoppm` (generación de miniaturas de PDF — paquete del sistema, opcional)
 
 ### Frontend
 - React
 - TypeScript
 - Vite
 - Axios
+- Lucide (`lucide-react`, íconos)
 
 ## Deployment en Ubuntu Server (o cualquier Linux)
 
@@ -276,11 +288,11 @@ El backend ya sirve el build de producción del frontend (ver `backend/src/serve
    npm start
    ```
 
-   Con esto basta: en cuanto el proceso levanta, LocalDrop ya está disponible en `http://<IP_DEL_SERVIDOR>:3001` para cualquier dispositivo de la LAN — no hace falta ningún paso manual adicional.
+   Con esto basta: en cuanto el proceso levanta, ETHDrop ya está disponible en `http://<IP_DEL_SERVIDOR>:3001` para cualquier dispositivo de la LAN — no hace falta ningún paso manual adicional.
 
 ### Mantenerlo corriendo de forma persistente: servicio systemd (recomendado)
 
-Así es como está desplegado actualmente en este equipo: LocalDrop corre como un **servicio de systemd de usuario**, por lo que arranca solo, se reinicia automáticamente si crashea, y no necesitas dejar ninguna terminal abierta.
+Así es como está desplegado actualmente en este equipo: ETHDrop corre como un **servicio de systemd de usuario** (la unidad y los comandos siguen usando el nombre `localdrop` internamente), por lo que arranca solo, se reinicia automáticamente si crashea, y no necesitas dejar ninguna terminal abierta.
 
 El archivo de la unidad vive en el repo como plantilla en [`deploy/localdrop.service`](deploy/localdrop.service) (usa `%h` para el home del usuario, así es portable entre máquinas) y se instala en `~/.config/systemd/user/localdrop.service`.
 
@@ -374,20 +386,31 @@ LocalDrop/
 │   │   ├── middleware/
 │   │   │   └── upload.ts      # Configuración de multer
 │   │   └── utils/
-│   │       └── fileUtils.ts   # Sanitización y validación
+│   │       ├── fileUtils.ts   # Sanitización y validación
+│   │       ├── thumbnails.ts  # Generación y cacheo de miniaturas (sharp + pdftoppm)
+│   │       └── order.ts       # Persistencia del orden manual compartido
 │   ├── storage/               # Archivos subidos (creado automáticamente)
+│   │   ├── .thumbnails/       # Cache de miniaturas (oculto, no sale en la lista)
+│   │   └── .order.json        # Orden manual guardado (oculto, no sale en la lista)
 │   ├── tests/
-│   │   └── api.test.ts       # Pruebas unitarias
+│   │   ├── api.test.ts       # Pruebas unitarias
+│   │   └── setup-env.ts      # Aísla los tests en un storage temporal
 │   ├── package.json
 │   └── tsconfig.json
 │
 ├── frontend/
+│   ├── public/
+│   │   └── favicon.svg       # Ícono de la pestaña del navegador
 │   ├── src/
 │   │   ├── App.tsx           # Componente principal
+│   │   ├── index.css          # Tokens de tema (claro/oscuro), tipografía
+│   │   ├── theme/
+│   │   │   └── ThemeContext.tsx # Proveedor de tema claro/oscuro
 │   │   ├── components/
 │   │   │   ├── DropZone.tsx
 │   │   │   ├── FileList.tsx
-│   │   │   └── UploadProgress.tsx
+│   │   │   ├── UploadProgress.tsx
+│   │   │   └── ThemeToggle.tsx
 │   │   ├── services/
 │   │   │   └── api.ts        # Cliente API
 │   │   └── types/
@@ -409,8 +432,40 @@ LocalDrop/
 - `GET /api/files` - Lista todos los archivos
 - `POST /api/files` - Sube un archivo (multipart/form-data)
 - `GET /api/files/:filename/download` - Descarga un archivo
+- `GET /api/files/:filename/thumbnail` - Sirve una miniatura (imágenes y PDFs); 404 si el tipo no soporta preview
+- `GET /api/files/order` - Devuelve el orden manual guardado (array de nombres de archivo)
+- `PUT /api/files/order` - Guarda un nuevo orden manual (body: `{ "order": ["archivo1.jpg", "archivo2.pdf"] }`)
 - `DELETE /api/files/:filename` - Elimina un archivo
 - `GET /health` - Health check del backend
+
+## Preview de imágenes y PDFs
+
+La lista de archivos muestra una miniatura para imágenes (`jpg`, `png`, `gif`, `webp`, `bmp`, `tiff`, `avif`) y PDFs. Las miniaturas se generan la primera vez que se piden y se cachean en `backend/storage/.thumbnails/` (oculto, no aparece en la lista de archivos), así que solo se paga el costo de generarlas una vez por archivo.
+
+- **Imágenes**: se procesan con [`sharp`](https://sharp.pixelplumb.com/), sin dependencias del sistema.
+- **PDFs**: se renderiza la primera página con `pdftoppm`, parte del paquete del sistema **`poppler-utils`**. Si no está instalado, el backend lo detecta y simplemente no genera miniaturas de PDF (el resto de la app sigue funcionando normal, el frontend muestra un ícono genérico). Para habilitarlo:
+
+  ```bash
+  sudo apt-get install -y poppler-utils
+  ```
+
+  Después de instalarlo no hace falta reiniciar nada más que el servicio (`systemctl --user restart localdrop` o el proceso de `npm start`, según cómo lo tengas corriendo) — la próxima vez que se pida una miniatura de un PDF, se genera sola.
+
+## Ordenamiento y vistas (lista / grilla)
+
+La lista de archivos tiene una barra con:
+
+- **Ordenar por**: Nombre, Fecha, Tamaño, Tipo (agrupa imágenes/PDFs/otros) o Personalizado — cada uno con dirección ascendente/descendente (excepto Personalizado). También podés hacer click en los encabezados de columna de la vista de lista para ordenar.
+- **Vista**: lista (detalle, como hoy) o grilla (íconos grandes, tipo Finder/Explorer/Google Drive).
+- **Orden personalizado**: al elegir "Personalizado" podés arrastrar los archivos para acomodarlos como quieras, en lista o en grilla. Este orden se guarda en el servidor (`backend/storage/.order.json`, oculto, no aparece en la lista de archivos) y es **compartido** — cualquier dispositivo que entre a ETHDrop ve el mismo orden.
+
+La vista (lista/grilla) y el criterio de ordenamiento automático son preferencias **por dispositivo** (se guardan en `localStorage` del navegador), ya que tiene sentido que un celular prefiera grilla y una PC prefiera lista.
+
+## Diseño visual
+
+- **Tipografía**: pila de fuentes de sistema de Apple (`-apple-system, BlinkMacSystemFont, "SF Pro Display"...`) — se ve con SF Pro real en Mac/iPhone/iPad y cae a una fuente muy similar en el resto de los sistemas. No se embebe la fuente en sí, ya que Apple no licencia su distribución fuera de apps nativas.
+- **Tema claro/oscuro**: sigue la preferencia del sistema operativo por defecto, con un switch animado (ícono sol/luna) para cambiarlo a mano; la elección se recuerda en `localStorage`. Los colores están basados en los tokens de sistema de Apple y el cambio de tema anima (no es un salto brusco).
+- **Íconos**: [Lucide](https://lucide.dev/) (`lucide-react`), una librería de íconos de trazo fino open source con una estética muy cercana a SF Symbols de Apple — SF Symbols en sí no se puede usar porque su licencia lo restringe a software nativo de plataformas Apple y prohíbe explícitamente su uso en contenido web.
 
 ## Solución de Problemas
 
@@ -441,7 +496,7 @@ LocalDrop/
 
 ## Licencia
 
-MIT
+[MIT](LICENSE)
 
 ## Contribuciones
 
