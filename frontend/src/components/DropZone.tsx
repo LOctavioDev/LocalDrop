@@ -1,8 +1,10 @@
 import React, { useCallback, useState } from 'react';
 import { FolderOpen, UploadCloud } from 'lucide-react';
+import { UploadBatch, batchFromDataTransfer, batchFromFileList } from '../utils/droppedFiles';
 
 interface DropZoneProps {
-  onFilesSelected: (files: File[]) => void;
+  /** Receives the dropped/picked files, including whole folder trees */
+  onFilesSelected: (batch: Promise<UploadBatch>) => void;
   disabled?: boolean;
 }
 
@@ -36,9 +38,8 @@ export const DropZone: React.FC<DropZoneProps> = ({ onFilesSelected, disabled })
 
       if (disabled) return;
 
-      const files = Array.from(e.dataTransfer.files);
-      if (files.length > 0) {
-        onFilesSelected(files);
+      if (e.dataTransfer.files.length > 0) {
+        onFilesSelected(batchFromDataTransfer(e.dataTransfer));
       }
     },
     [onFilesSelected, disabled]
@@ -50,7 +51,7 @@ export const DropZone: React.FC<DropZoneProps> = ({ onFilesSelected, disabled })
 
       const files = e.target.files;
       if (files && files.length > 0) {
-        onFilesSelected(Array.from(files));
+        onFilesSelected(Promise.resolve(batchFromFileList(files)));
       }
       // Reset input value to allow selecting the same file again
       e.target.value = '';
@@ -87,33 +88,49 @@ export const DropZone: React.FC<DropZoneProps> = ({ onFilesSelected, disabled })
         {isDragging ? <UploadCloud size={48} /> : <FolderOpen size={48} />}
       </div>
       <h2 style={{ margin: '0 0 16px 0', color: 'var(--text-primary)', fontWeight: 600 }}>
-        {isDragging ? 'Drop files here' : 'Drag & Drop Files'}
+        {isDragging ? 'Drop files here' : 'Drag & Drop Files or Folders'}
       </h2>
       <p style={{ margin: '0 0 16px 0', color: 'var(--text-secondary)' }}>
         or
       </p>
-      <label
-        style={{
-          display: 'inline-block',
-          padding: '12px 24px',
-          backgroundColor: disabled ? 'var(--disabled)' : 'var(--accent)',
-          color: 'var(--accent-contrast)',
-          borderRadius: '980px',
-          cursor: disabled ? 'not-allowed' : 'pointer',
-          fontSize: '16px',
-          fontWeight: 600,
-          transition: 'background-color 0.2s ease',
-        }}
-      >
-        Select Files
-        <input
-          type="file"
-          multiple
-          onChange={handleFileInputChange}
-          disabled={disabled}
-          style={{ display: 'none' }}
-        />
-      </label>
+      <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '12px' }}>
+        <label style={pickerStyle(disabled, true)}>
+          Select Files
+          <input
+            type="file"
+            multiple
+            onChange={handleFileInputChange}
+            disabled={disabled}
+            style={{ display: 'none' }}
+          />
+        </label>
+        <label style={pickerStyle(disabled, false)}>
+          Select Folder
+          <input
+            type="file"
+            // Folder picker: uploads the whole tree, keeping its structure
+            {...{ webkitdirectory: '', directory: '' }}
+            onChange={handleFileInputChange}
+            disabled={disabled}
+            style={{ display: 'none' }}
+          />
+        </label>
+      </div>
     </div>
   );
 };
+
+function pickerStyle(disabled: boolean | undefined, primary: boolean): React.CSSProperties {
+  return {
+    display: 'inline-block',
+    padding: '12px 24px',
+    backgroundColor: disabled ? 'var(--disabled)' : primary ? 'var(--accent)' : 'var(--surface-hover)',
+    color: primary || disabled ? 'var(--accent-contrast)' : 'var(--text-primary)',
+    border: primary ? 'none' : '1px solid var(--border)',
+    borderRadius: '980px',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    fontSize: '16px',
+    fontWeight: 600,
+    transition: 'background-color 0.2s ease',
+  };
+}

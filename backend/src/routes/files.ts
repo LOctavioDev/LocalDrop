@@ -1,40 +1,77 @@
 import express, { Request, Response } from 'express';
 import fs from 'fs/promises';
-import { existsSync } from 'fs';
-import path from 'path';
-import { upload } from '../middleware/upload';
-import { STORAGE_DIR, validateFilePath, getFileInfo } from '../utils/fileUtils';
+import { uploadSingleFile, resolveUploadDir } from '../middleware/upload';
+import {
+  SafePath,
+  getItemInfo,
+  isValidName,
+  joinRel,
+  listDir,
+  resolveSafePath,
+  sanitizeName,
+  uniqueName,
+} from '../utils/fileUtils';
 import { getOrCreateThumbnail, deleteThumbnail } from '../utils/thumbnails';
-import { readOrder, writeOrder, pruneOrder } from '../utils/order';
+import { readOrder, writeOrder } from '../utils/order';
+import { deleteItem, parseConflict, statOrNull } from '../utils/items';
 
 const router = express.Router();
 
 /**
- * GET /api/files
- * List all files in storage
+ * Multer (via busboy) decodes the multipart filename as latin1, which
+ * mangles the UTF-8 names browsers actually send ("Año" -> "AÃ±o").
+ * Re-decodes them, leaving anything that isn't valid UTF-8 untouched.
  */
-router.get('/', async (_req: Request, res: Response) => {
+function decodeOriginalName(name: string): string {
+  if (/[^\x00-\xff]/.test(name)) return name;
+  const decoded = Buffer.from(name, 'latin1').toString('utf8');
+  return decoded.includes('�') ? name : decoded;
+}
+
+/**
+ * Resolves a `dir` query param to an existing folder, or sends the error
+ * response and returns null.
+ */
+async function resolveExistingDir(dirParam: unknown, res: Response): Promise<SafePath | null> {
+  const dir = resolveSafePath(dirParam);
+  if (!dir) {
+    res.status(400).json({ error: 'Invalid folder path' });
+    return null;
+  }
+  if (!(await statOrNull(dir.full))?.isDirectory()) {
+    res.status(404).json({ error: 'Folder not found' });
+    return null;
+  }
+  return dir;
+}
+
+/**
+ * Resolves a `path` query param to an existing file, or sends the error
+ * response and returns null.
+ */
+async function resolveExistingFile(pathParam: unknown, res: Response): Promise<SafePath | null> {
+  const file = resolveSafePath(pathParam);
+  if (!file || !file.rel) {
+    res.status(400).json({ error: 'Invalid file path' });
+    return null;
+  }
+  if (!(await statOrNull(file.full))?.isFile()) {
+    res.status(404).json({ error: 'File not found' });
+    return null;
+  }
+  return file;
+}
+
+/**
+ * GET /api/files?dir=<folder>
+ * List the files and folders inside a folder (the root by default)
+ */
+router.get('/', async (req: Request, res: Response) => {
   try {
-    // Read all files from storage directory, skipping hidden entries
-    // like the .thumbnails cache directory
-    const entries = await fs.readdir(STORAGE_DIR);
-    const files = entries.filter((filename) => !filename.startsWith('.'));
+    const dir = await resolveExistingDir(req.query.dir, res);
+    if (!dir) return;
 
-    // Get file information for each file
-    const fileInfoPromises = files.map(async (filename) => {
-      try {
-        return await getFileInfo(filename);
-      } catch (error) {
-        console.error(`Error reading file info for ${filename}:`, error);
-        return null;
-      }
-    });
-
-    const filesInfo = (await Promise.all(fileInfoPromises)).filter(
-      (info) => info !== null
-    );
-
-    res.json(filesInfo);
+    res.json(await listDir(dir.rel));
   } catch (error) {
     console.error('Error listing files:', error);
     res.status(500).json({ error: 'Failed to list files' });
@@ -42,36 +79,62 @@ router.get('/', async (_req: Request, res: Response) => {
 });
 
 /**
- * POST /api/files
- * Upload a new file
+ * POST /api/files?dir=<folder>&conflict=rename|replace
+ * Upload a new file into a folder (created if missing). If the name is
+ * taken, "replace" overwrites it; otherwise it's saved as "name (2)" etc.
  */
-router.post('/', upload.single('file'), async (req: Request, res: Response) => {
+router.post('/', resolveUploadDir, uploadSingleFile, async (req: Request, res: Response) => {
+  const tempPath = req.file?.path;
+
   try {
-    if (!req.file) {
+    if (!req.file || !tempPath) {
       return res.status(400).json({ error: 'No file provided' });
     }
 
-    // Get file information
-    const fileInfo = await getFileInfo(req.file.filename);
+    const conflict = parseConflict(req.query.conflict);
+    if (conflict === null) {
+      await fs.unlink(tempPath).catch(() => {});
+      return res.status(400).json({ error: 'Invalid conflict strategy' });
+    }
+
+    const dir = res.locals.uploadDir as SafePath;
+    let name = sanitizeName(decodeOriginalName(req.file.originalname));
+    let target = resolveSafePath(joinRel(dir.rel, name))!;
+
+    if (await statOrNull(target.full)) {
+      if (conflict === 'replace') {
+        await deleteItem(target);
+      } else {
+        name = uniqueName(dir.full, name);
+        target = resolveSafePath(joinRel(dir.rel, name))!;
+      }
+    }
+
+    await fs.rename(tempPath, target.full);
+    await deleteThumbnail(target.rel);
 
     res.status(201).json({
       message: 'File uploaded successfully',
-      file: fileInfo,
+      file: await getItemInfo(target.rel),
     });
   } catch (error) {
     console.error('Error uploading file:', error);
+    if (tempPath) await fs.unlink(tempPath).catch(() => {});
     res.status(500).json({ error: 'Failed to upload file' });
   }
 });
 
 /**
- * GET /api/files/order
- * Get the saved manual file order (shared across all devices)
+ * GET /api/files/order?dir=<folder>
+ * Get a folder's saved manual order (shared across all devices)
  */
-router.get('/order', async (_req: Request, res: Response) => {
+router.get('/order', async (req: Request, res: Response) => {
   try {
-    const order = await readOrder();
-    res.json(order);
+    const dir = resolveSafePath(req.query.dir);
+    if (!dir) {
+      return res.status(400).json({ error: 'Invalid folder path' });
+    }
+    res.json(await readOrder(dir.rel));
   } catch (error) {
     console.error('Error reading file order:', error);
     res.status(500).json({ error: 'Failed to read file order' });
@@ -80,23 +143,24 @@ router.get('/order', async (_req: Request, res: Response) => {
 
 /**
  * PUT /api/files/order
- * Save a new manual file order (shared across all devices)
+ * Save a folder's manual order: { dir, order: [names...] }
  */
 router.put('/order', async (req: Request, res: Response) => {
   try {
     const { order } = req.body;
 
     if (!Array.isArray(order) || !order.every((entry) => typeof entry === 'string')) {
-      return res.status(400).json({ error: 'order must be an array of filenames' });
+      return res.status(400).json({ error: 'order must be an array of names' });
     }
 
-    // Only keep entries that are valid, existing filenames
-    const validated = order.filter((filename) => {
-      const { valid, fullPath } = validateFilePath(filename);
-      return valid && existsSync(fullPath);
-    });
+    const dir = await resolveExistingDir(req.body.dir, res);
+    if (!dir) return;
 
-    await writeOrder(validated);
+    // Only keep entries that are valid, existing items in that folder
+    const existing = new Set(await fs.readdir(dir.full));
+    const validated = order.filter((name) => isValidName(name) && existing.has(name));
+
+    await writeOrder(dir.rel, validated);
     res.json(validated);
   } catch (error) {
     console.error('Error saving file order:', error);
@@ -105,25 +169,15 @@ router.put('/order', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/files/:filename/download
+ * GET /api/files/download?path=<file>
  * Download a specific file
  */
-router.get('/:filename/download', async (req: Request, res: Response) => {
+router.get('/download', async (req: Request, res: Response) => {
   try {
-    const { filename } = req.params;
-    const { valid, fullPath } = validateFilePath(filename);
+    const file = await resolveExistingFile(req.query.path, res);
+    if (!file) return;
 
-    if (!valid) {
-      return res.status(400).json({ error: 'Invalid filename' });
-    }
-
-    // Check if file exists
-    if (!existsSync(fullPath)) {
-      return res.status(404).json({ error: 'File not found' });
-    }
-
-    // Send file for download
-    res.download(fullPath, filename, (error) => {
+    res.download(file.full, file.rel.slice(file.rel.lastIndexOf('/') + 1), (error) => {
       if (error) {
         console.error('Error downloading file:', error);
         if (!res.headersSent) {
@@ -138,23 +192,15 @@ router.get('/:filename/download', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/files/:filename/thumbnail
+ * GET /api/files/thumbnail?path=<file>
  * Serve a cached (or freshly generated) thumbnail for an image/PDF file
  */
-router.get('/:filename/thumbnail', async (req: Request, res: Response) => {
+router.get('/thumbnail', async (req: Request, res: Response) => {
   try {
-    const { filename } = req.params;
-    const { valid, fullPath } = validateFilePath(filename);
+    const file = await resolveExistingFile(req.query.path, res);
+    if (!file) return;
 
-    if (!valid) {
-      return res.status(400).json({ error: 'Invalid filename' });
-    }
-
-    if (!existsSync(fullPath)) {
-      return res.status(404).json({ error: 'File not found' });
-    }
-
-    const thumbPath = await getOrCreateThumbnail(filename, fullPath);
+    const thumbPath = await getOrCreateThumbnail(file.rel, file.full);
 
     if (!thumbPath) {
       return res.status(404).json({ error: 'No thumbnail available' });
@@ -165,36 +211,6 @@ router.get('/:filename/thumbnail', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error serving thumbnail:', error);
     res.status(500).json({ error: 'Failed to serve thumbnail' });
-  }
-});
-
-/**
- * DELETE /api/files/:filename
- * Delete a specific file
- */
-router.delete('/:filename', async (req: Request, res: Response) => {
-  try {
-    const { filename } = req.params;
-    const { valid, fullPath } = validateFilePath(filename);
-
-    if (!valid) {
-      return res.status(400).json({ error: 'Invalid filename' });
-    }
-
-    // Check if file exists
-    if (!existsSync(fullPath)) {
-      return res.status(404).json({ error: 'File not found' });
-    }
-
-    // Delete the file and any cached thumbnail / saved order position for it
-    await fs.unlink(fullPath);
-    await deleteThumbnail(filename);
-    await pruneOrder(filename);
-
-    res.json({ message: 'File deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting file:', error);
-    res.status(500).json({ error: 'Failed to delete file' });
   }
 });
 

@@ -17,7 +17,7 @@ export const UploadProgress: React.FC<UploadProgressProps> = ({ uploads }) => {
       <h3 style={{ marginBottom: '12px', color: 'var(--text-primary)' }}>Uploading Files</h3>
       {uploads.map((upload) => (
         <div
-          key={upload.filename}
+          key={upload.id}
           style={{
             marginBottom: '12px',
             padding: '12px',
@@ -35,7 +35,18 @@ export const UploadProgress: React.FC<UploadProgressProps> = ({ uploads }) => {
               marginBottom: '8px',
             }}
           >
-            <span style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>
+            <span
+              title={upload.filename}
+              style={{
+                fontWeight: 'bold',
+                color: 'var(--text-primary)',
+                minWidth: 0,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                marginRight: '12px',
+              }}
+            >
               {upload.filename}
             </span>
             <span
