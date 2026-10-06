@@ -1,4 +1,5 @@
 import React from 'react';
+import { CheckCircle2, XCircle } from 'lucide-react';
 import { UploadProgress as UploadProgressType } from '../types';
 
 interface UploadProgressProps {
@@ -8,18 +9,22 @@ interface UploadProgressProps {
 export const UploadProgress: React.FC<UploadProgressProps> = ({ uploads }) => {
   if (uploads.length === 0) return null;
 
+  const statusColor = (status: UploadProgressType['status']) =>
+    status === 'success' ? 'var(--success)' : status === 'error' ? 'var(--danger)' : 'var(--accent)';
+
   return (
     <div style={{ marginBottom: '20px' }}>
-      <h3 style={{ marginBottom: '12px', color: '#333' }}>Uploading Files</h3>
+      <h3 style={{ marginBottom: '12px', color: 'var(--text-primary)' }}>Uploading Files</h3>
       {uploads.map((upload) => (
         <div
           key={upload.filename}
           style={{
             marginBottom: '12px',
             padding: '12px',
-            border: '1px solid #e0e0e0',
-            borderRadius: '4px',
-            backgroundColor: '#fff',
+            border: '1px solid var(--border)',
+            borderRadius: '8px',
+            backgroundColor: 'var(--surface)',
+            transition: 'background-color 0.3s ease, border-color 0.3s ease',
           }}
         >
           <div
@@ -30,22 +35,28 @@ export const UploadProgress: React.FC<UploadProgressProps> = ({ uploads }) => {
               marginBottom: '8px',
             }}
           >
-            <span style={{ fontWeight: 'bold', color: '#333' }}>
+            <span style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>
               {upload.filename}
             </span>
             <span
               style={{
-                color:
-                  upload.status === 'success'
-                    ? '#28a745'
-                    : upload.status === 'error'
-                    ? '#dc3545'
-                    : '#007bff',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                color: statusColor(upload.status),
                 fontSize: '14px',
               }}
             >
-              {upload.status === 'success' && '✓ Complete'}
-              {upload.status === 'error' && '✗ Failed'}
+              {upload.status === 'success' && (
+                <>
+                  <CheckCircle2 size={16} /> Complete
+                </>
+              )}
+              {upload.status === 'error' && (
+                <>
+                  <XCircle size={16} /> Failed
+                </>
+              )}
               {upload.status === 'uploading' && `${upload.progress}%`}
             </span>
           </div>
@@ -53,7 +64,7 @@ export const UploadProgress: React.FC<UploadProgressProps> = ({ uploads }) => {
             style={{
               width: '100%',
               height: '8px',
-              backgroundColor: '#e0e0e0',
+              backgroundColor: 'var(--thumb-bg)',
               borderRadius: '4px',
               overflow: 'hidden',
             }}
@@ -62,13 +73,8 @@ export const UploadProgress: React.FC<UploadProgressProps> = ({ uploads }) => {
               style={{
                 width: `${upload.progress}%`,
                 height: '100%',
-                backgroundColor:
-                  upload.status === 'success'
-                    ? '#28a745'
-                    : upload.status === 'error'
-                    ? '#dc3545'
-                    : '#007bff',
-                transition: 'width 0.3s ease',
+                backgroundColor: statusColor(upload.status),
+                transition: 'width 0.3s ease, background-color 0.3s ease',
               }}
             />
           </div>
@@ -76,7 +82,7 @@ export const UploadProgress: React.FC<UploadProgressProps> = ({ uploads }) => {
             <div
               style={{
                 marginTop: '8px',
-                color: '#dc3545',
+                color: 'var(--danger)',
                 fontSize: '14px',
               }}
             >

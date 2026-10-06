@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { DropZone } from './components/DropZone';
 import { FileList } from './components/FileList';
 import { UploadProgress } from './components/UploadProgress';
+import { ThemeToggle } from './components/ThemeToggle';
 import { api } from './services/api';
 import { FileInfo, UploadProgress as UploadProgressType } from './types';
 
@@ -95,8 +96,9 @@ function App() {
     <div
       style={{
         minHeight: '100vh',
-        backgroundColor: '#f5f5f5',
+        backgroundColor: 'var(--bg)',
         padding: '20px',
+        transition: 'background-color 0.4s ease',
       }}
     >
       <div
@@ -107,39 +109,49 @@ function App() {
       >
         <header
           style={{
-            textAlign: 'center',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '20px',
             marginBottom: '40px',
           }}
         >
-          <h1
-            style={{
-              fontSize: '48px',
-              margin: '0 0 8px 0',
-              color: '#333',
-            }}
-          >
-            LocalDrop
-          </h1>
-          <p
-            style={{
-              fontSize: '18px',
-              color: '#666',
-              margin: 0,
-            }}
-          >
-            Share files across your local network
-          </p>
+          <div style={{ width: '56px', flexShrink: 0 }} aria-hidden="true" />
+          <div style={{ textAlign: 'center', flex: 1 }}>
+            <h1
+              style={{
+                fontSize: '48px',
+                fontWeight: 700,
+                letterSpacing: '-0.02em',
+                margin: '0 0 8px 0',
+                color: 'var(--text-primary)',
+                transition: 'color 0.4s ease',
+              }}
+            >
+              ETHDrop
+            </h1>
+            <p
+              style={{
+                fontSize: '18px',
+                color: 'var(--text-secondary)',
+                margin: 0,
+                transition: 'color 0.4s ease',
+              }}
+            >
+              Share files across your local network
+            </p>
+          </div>
+          <ThemeToggle />
         </header>
 
         {error && (
           <div
             style={{
               padding: '16px',
-              backgroundColor: '#f8d7da',
-              color: '#721c24',
-              borderRadius: '4px',
+              backgroundColor: 'var(--danger)',
+              color: '#fff',
+              borderRadius: '8px',
               marginBottom: '20px',
-              border: '1px solid #f5c6cb',
             }}
           >
             {error}
@@ -154,7 +166,7 @@ function App() {
         <UploadProgress uploads={uploads} />
 
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
+          <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
             Loading files...
           </div>
         ) : (

@@ -69,6 +69,21 @@ export const api = {
   },
 
   /**
+   * Get the saved manual file order (shared across all devices)
+   */
+  async getOrder(): Promise<string[]> {
+    const response = await axios.get(`${API_BASE_URL}/files/order`);
+    return response.data;
+  },
+
+  /**
+   * Save a new manual file order (shared across all devices)
+   */
+  async saveOrder(order: string[]): Promise<void> {
+    await axios.put(`${API_BASE_URL}/files/order`, { order });
+  },
+
+  /**
    * Format file size for display
    */
   formatFileSize(bytes: number): string {
