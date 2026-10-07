@@ -204,7 +204,7 @@ Si el ping funciona pero no puedes acceder a la aplicación, es un problema de f
 
 Edita `backend/src/server.ts`:
 ```typescript
-const PORT = process.env.PORT || 3001; // Cambia 3001 por el puerto deseado
+const PORT = parseInt(process.env.PORT || '3001', 10); // Cambia 3001 por el puerto deseado
 ```
 
 O usa una variable de entorno:
@@ -248,6 +248,7 @@ Este directorio se crea automáticamente cuando ejecutas el backend por primera 
 - Las carpetas de la app son carpetas reales dentro de `backend/storage/`: lo que ves en ETHDrop es exactamente lo que hay en el disco
 - Si subes un archivo con un nombre que ya existe, la app pregunta si reemplazarlo o conservar ambos; "conservar ambos" lo guarda como `archivo (2).txt`, `archivo (3).txt`…
 - Los nombres que empiezan con punto están reservados para datos internos (`.thumbnails/`, `.order.json`), así que al subir un archivo como `.env` se guarda como `env`
+- Tamaño máximo por archivo: **1 GB** (si se supera, el servidor responde `413`). Se cambia en `fileSize` dentro de `backend/src/middleware/upload.ts`
 
 ## Ejecutar Pruebas
 
@@ -509,12 +510,12 @@ La carpeta principal sigue siendo la de siempre, y adentro puedes crear todas la
 
 - **Crear**: botón **Nueva carpeta** o clic derecho en un espacio vacío → *Nueva carpeta*. Aparece con el nombre listo para escribir, como en Finder/Explorer (Enter guarda, Esc deja el nombre por defecto).
 - **Abrir**: un clic en la carpeta. Arriba se muestra la ruta (`Inicio › Fotos › 2026`) y cada parte es clickeable. La carpeta abierta queda en la URL (`#/Fotos/2026`), así que el botón "atrás" del navegador funciona y puedes compartir el enlace a una carpeta con otro dispositivo.
-- **Menú contextual**: clic derecho sobre un archivo o carpeta (o el botón **⋯**, pensado para celulares) → Abrir, Descargar / Descargar .zip, Renombrar, Mover a…, Eliminar.
+- **Menú contextual**: clic derecho sobre un archivo o carpeta (o el botón **⋯**, pensado para celulares, donde no hay clic derecho) → Abrir, Descargar / Descargar .zip, Renombrar, Mover a…, Eliminar. En los resultados de búsqueda también aparece *Mostrar en carpeta*. Clic derecho en un espacio vacío → Nueva carpeta, Descargar carpeta (.zip).
 - **Renombrar**: en el lugar, igual que en el sistema operativo. Funciona para archivos y carpetas.
 - **Mover**: arrastra un elemento y suéltalo sobre una carpeta para meterlo adentro, o sobre una parte de la ruta de arriba para subirlo de nivel. También con *Mover a…*, que abre un selector de carpetas (y permite crear una nueva ahí mismo).
 - **Nombres repetidos**: al subir, renombrar o mover, si ya existe un elemento con ese nombre la app pregunta: **Reemplazar** o **Conservar ambos** (el nuevo queda como `nombre (2)`). Si son varios, se puede aplicar la misma decisión a todos.
 - **Eliminar una carpeta**: pide confirmación indicando cuántos elementos tiene adentro, y borra todo su contenido.
-- **Subir carpetas**: arrastra una carpeta desde tu computadora (o usa **Select Folder**) y se sube con toda su estructura. Puedes soltar archivos directamente sobre una carpeta de la lista para subirlos ahí.
+- **Subir carpetas**: arrastra una carpeta desde tu computadora (o usa **Select Folder**) y se sube con toda su estructura, dentro de la carpeta que tengas abierta. Puedes soltar archivos directamente sobre una carpeta de la lista para subirlos ahí. Al arrastrar se conservan también las subcarpetas vacías; con **Select Folder** no, porque el selector del navegador solo informa archivos.
 - **Descargar como .zip**: cualquier carpeta (o la principal entera, con el botón **.zip** de la barra) se descarga como zip, generado al vuelo sin archivos temporales.
 - **Buscar**: el buscador de la barra busca por nombre en todas las carpetas, sin distinguir mayúsculas ni acentos ("cancion" encuentra "Canción.mp3"). Cada resultado muestra en qué carpeta está, con un enlace para ir a ella.
 
@@ -525,7 +526,7 @@ Si alguien borra o renombra desde otro dispositivo la carpeta que tienes abierta
 Las **carpetas siempre aparecen primero**, con cualquier criterio de orden. La lista de archivos tiene una barra con:
 
 - **Ordenar por**: Nombre, Fecha, Tamaño, Tipo (agrupa imágenes/PDFs/otros) o Personalizado — cada uno con dirección ascendente/descendente (excepto Personalizado). También podés hacer click en los encabezados de columna de la vista de lista para ordenar.
-- **Vista**: lista (detalle, como hoy) o grilla (íconos grandes, tipo Finder/Explorer/Google Drive).
+- **Vista**: lista (detalle con tamaño y fecha) o grilla (íconos grandes, tipo Finder/Explorer/Google Drive). En pantallas angostas (celular) los botones de cada elemento se muestran solo con ícono.
 - **Orden personalizado**: al elegir "Personalizado" podés arrastrar los archivos para acomodarlos como quieras, en lista o en grilla. Cada carpeta tiene su propio orden. Para reordenar carpetas entre sí, soltá la carpeta sobre el borde de otra (soltarla en el centro la mete adentro). Este orden se guarda en el servidor (`backend/storage/.order.json`, oculto, no aparece en la lista de archivos) y es **compartido** — cualquier dispositivo que entre a ETHDrop ve el mismo orden. Al renombrar o mover algo, el orden guardado se actualiza solo.
 - Ordenar por **Tamaño** ordena las carpetas por cantidad de elementos.
 
@@ -545,6 +546,10 @@ La vista (lista/grilla) y el criterio de ordenamiento automático son preferenci
 
 ### La página carga pero muestra un error o queda en blanco (modo producción)
 - Falta el build del frontend. Ejecuta `npm run build` desde la raíz antes de `npm start`
+
+### Después de actualizar, fallan las carpetas, la búsqueda o el .zip (errores 404)
+- El frontend compilado y el backend en ejecución son de versiones distintas (por ejemplo, se reconstruyó el frontend pero el servicio sigue corriendo el backend viejo). Reconstruye y reinicia todo junto con `./deploy/redeploy.sh`
+- Ojo: el servicio sirve directamente `backend/dist` y `frontend/dist` de este mismo directorio, así que correr `npm run build` aquí cambia lo que ven todos los dispositivos. Para desarrollar sin afectarlo, detén el servicio (`systemctl --user stop localdrop`), usa `npm run dev` (que también usa el puerto 3001) y al terminar corre `./deploy/redeploy.sh`
 
 ### Error: "Network Error" en el frontend (modo desarrollo)
 - Verifica que el backend esté corriendo en el puerto 3001
